@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: trading-journal
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FIREBASE_CREDENTIALS
+        sync: false
+      - key: APP_USER
+        value: trader
+      - key: APP_PASSWORD
+        sync: false
