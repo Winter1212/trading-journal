@@ -1,1 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Journal</title>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f4;--panel:#fff;--ink:#14202b;--mute:#5d6b79;--line:#d5dce3;--accent:#1f5f8b;--win:#1b7f5a;--loss:#c23b3b;
+--sans:"Familjen Grotesk",system-ui,sans-serif;--serif:"Source Serif 4",Georgia,serif}
+@media(prefers-color-scheme:dark){:root{--bg:#10171e;--panel:#18222c;--ink:#e6ecf1;--mute:#93a1ae;--line:#2b3947;--accent:#6bb0dd;--win:#4fcf9b;--loss:#ff7b7b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.stat b{display:block;font-size:22px}
+.stat span{color:var(--mute);font-size:13px}
+form{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+label{display:block;font-size:13px;color:var(--mute);margin-bottom:4px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+textarea{font-family:var(--serif);font-size:16px;resize:vertical;min-height:84px}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.full{grid-column:1/-1}
+.actions{display:flex;gap:8px;margin-top:14px}
+button{font:inherit;font-weight:600;border:0;border-radius:6px;padding:9px 16px;cursor:pointer;background:var(--accent);color:#fff}
+button.ghost{background:transparent;color:var(--mute);border:1px solid var(--line)}
+.trade{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:12px}
+.trade.win{border-left-color:var(--win)}.trade.loss{border-left-color:var(--loss)}
+.head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+.sym{font-size:20px;font-weight:700}
+.pnl{font-size:20px;font-weight:700}.win .pnl{color:var(--win)}.loss .pnl{color:var(--loss)}
+.meta{color:var(--mute);font-size:14px}
+.note{font-family:var(--serif);font-size:16px;margin:10px 0 0;white-space:pre-wrap;max-width:75ch}
+.note small{display:block;font-family:var(--sans);font-size:13px;color:var(--mute);font-weight:600}
+.row-actions{margin-top:10px;display:flex;gap:8px}
+.row-actions button{padding:4px 10px;font-size:13px}
+.empty{color:var(--mute);text-align:center;padding:32px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trading journal</h1>
+  <p class="sub">Write down why you take the trade. Review it after it closes.</p>
+
+  <div class="stats" id="stats"></div>
+
+  <form id="form">
+    <div class="grid">
+      <div><label for="date">Date</label><input type="date" id="date" required></div>
+      <div><label for="symbol">Symbol</label><input id="symbol" placeholder="EURUSD, BTC, AAPL" required></div>
+      <div><label for="side">Direction</label><select id="side"><option>Long</option><option>Short</option></select></div>
+      <div><label for="setup">Setup</label><input id="setup" placeholder="Breakout, pullback..."></div>
+      <div><label for="entry">Entry price</label><input type="number" step="any" id="entry"></div>
+      <div><label for="stop">Stop loss</label><input type="number" step="any" id="stop"></div>
+      <div><label for="target">Target</label><input type="number" step="any" id="target"></div>
+      <div><label for="exit">Exit price</label><input type="number" step="any" id="exit"></div>
+      <div><label for="size">Size / units</label><input type="number" step="any" id="size"></div>
+      <div><label for="emotion">How I felt</label><input id="emotion" placeholder="Calm, FOMO, hesitant..."></div>
+      <div class="full"><label for="reason">Why I took this trade</label><textarea id="reason" required placeholder="What did you see? What confirmed it? Where is it wrong?"></textarea></div>
+      <div class="full"><label for="lesson">Review: what I learned</label><textarea id="lesson" placeholder="Fill in after the trade closes."></textarea></div>
+    </div>
+    <div class="actions">
+      <button type="submit" id="save">Save trade</button>
+      <button type="button" class="ghost" id="cancel" hidden>Cancel edit</button>
+    </div>
+  </form>
+
+  <div id="list"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fields = ["date","symbol","side","setup","entry","stop","target","exit","size","emotion","reason","lesson"];
+let trades = [], editId = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const money = n => (n < 0 ? "-" : "+") + Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+
+async function api(url, method = "GET", body) {
+  const r = await fetch(url, {method, headers:{"Content-Type":"application/json"}, body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Request failed");
+  return r.status === 204 ? null : r.json();
+}
+
+async function load() {
+  trades = await api("/api/trades");
+  render();
+}
+
+function render() {
+  const closed = trades.filter(t => t.pnl != null);
+  const wins = closed.filter(t => t.pnl > 0).length;
+  const total = closed.reduce((a, t) => a + t.pnl, 0);
+  $("stats").innerHTML = [
+    ["Trades", trades.length],
+    ["Win rate", closed.length ? Math.round(wins / closed.length * 100) + "%" : "-"],
+    ["Total P&L", closed.length ? money(total) : "-"],
+    ["Avg P&L", closed.length ? money(total / closed.length) : "-"],
+  ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+
+  if (!trades.length) { $("list").innerHTML = '<div class="empty">No trades yet. Add your first one above.</div>'; return; }
+  $("list").innerHTML = trades.map(t => {
+    const cls = t.pnl == null ? "" : t.pnl >= 0 ? "win" : "loss";
+    const prices = [["Entry",t.entry],["Stop",t.stop],["Target",t.target],["Exit",t.exit],["Size",t.size]]
+      .filter(([,v]) => v != null).map(([k,v]) => `${k} ${v}`).join(" | ");
+    return `<div class="trade ${cls}">
+      <div class="head"><span><span class="sym">${esc(t.symbol)}</span> <span class="meta">${esc(t.side)}${t.setup ? " | " + esc(t.setup) : ""}</span></span>
+      <span class="pnl">${t.pnl == null ? "Open" : money(t.pnl)}</span></div>
+      <div class="meta">${esc(t.date)}${prices ? " | " + prices : ""}${t.emotion ? " | Felt: " + esc(t.emotion) : ""}</div>
+      <p class="note"><small>Why I took it</small>${esc(t.reason)}</p>
+      ${t.lesson ? `<p class="note"><small>What I learned</small>${esc(t.lesson)}</p>` : ""}
+      <div class="row-actions"><button class="ghost" onclick="edit('${t.id}')">Edit</button><button class="ghost" onclick="del('${t.id}')">Delete</button></div>
+    </div>`;
+  }).join("");
+}
+
+function reset() {
+  $("form").reset(); editId = null;
+  $("date").value = new Date().toISOString().slice(0, 10);
+  $("save").textContent = "Save trade"; $("cancel").hidden = true;
+}
+
+window.edit = id => {
+  const t = trades.find(x => x.id === id); editId = id;
+  fields.forEach(f => $(f).value = t[f] ?? "");
+  $("save").textContent = "Update trade"; $("cancel").hidden = false;
+  window.scrollTo({top: 0, behavior: "smooth"});
+};
+
+window.del = async id => {
+  if (!confirm("Delete this trade?")) return;
+  await api("/api/trades/" + id, "DELETE"); load();
+};
+
+$("cancel").onclick = reset;
+$("form").onsubmit = async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(fields.map(f => [f, $(f).value]));
+  try {
+    await api(editId ? "/api/trades/" + editId : "/api/trades", editId ? "PUT" : "POST", body);
+    reset(); load();
+  } catch (err) { alert(err.message); }
+};
+
+reset(); load();
+</script>
+</body>
+</html>
 
